@@ -47,9 +47,9 @@ import cv2
 import dlib
 import numpy
 
-import sys
+#import sys
 
-PREDICTOR_PATH = "/home/matt/dlib-18.16/shape_predictor_68_face_landmarks.dat"
+PREDICTOR_PATH = "shape_predictor_68_face_landmarks.dat"
 SCALE_FACTOR = 1 
 FEATHER_AMOUNT = 11
 
@@ -80,11 +80,15 @@ COLOUR_CORRECT_BLUR_FRAC = 0.6
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(PREDICTOR_PATH)
 
-class TooManyFaces(Exception):
+class DetectorException(Exception):
     pass
 
-class NoFaces(Exception):
+class TooManyFaces(DetectorException):
     pass
+
+class NoFaces(DetectorException):
+    pass
+
 
 def get_landmarks(im):
     rects = detector(im, 1)
@@ -199,21 +203,26 @@ def correct_colours(im1, im2, landmarks1):
     return (im2.astype(numpy.float64) * im1_blur.astype(numpy.float64) /
                                                 im2_blur.astype(numpy.float64))
 
-im1, landmarks1 = read_im_and_landmarks(sys.argv[1])
-im2, landmarks2 = read_im_and_landmarks(sys.argv[2])
+def swap(head_file, face_file):
+	im1, landmarks1 = read_im_and_landmarks(head_file)
+	im2, landmarks2 = read_im_and_landmarks(face_file)
 
-M = transformation_from_points(landmarks1[ALIGN_POINTS],
-                               landmarks2[ALIGN_POINTS])
+	M = transformation_from_points(landmarks1[ALIGN_POINTS],
+				       landmarks2[ALIGN_POINTS])
 
-mask = get_face_mask(im2, landmarks2)
-warped_mask = warp_im(mask, M, im1.shape)
-combined_mask = numpy.max([get_face_mask(im1, landmarks1), warped_mask],
-                          axis=0)
+	mask = get_face_mask(im2, landmarks2)
+	warped_mask = warp_im(mask, M, im1.shape)
+	combined_mask = numpy.max([get_face_mask(im1, landmarks1), warped_mask],
+				  axis=0)
 
-warped_im2 = warp_im(im2, M, im1.shape)
-warped_corrected_im2 = correct_colours(im1, warped_im2, landmarks1)
+	warped_im2 = warp_im(im2, M, im1.shape)
+	warped_corrected_im2 = correct_colours(im1, warped_im2, landmarks1)
+	cv2.imwrite('intermediate.jpg', warped_corrected_im2)
 
-output_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
+	output_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
+	return output_im
 
-cv2.imwrite('output.jpg', output_im)
-
+if __name__ == '__main__':
+	import sys
+	head_file, face_file = sys.argv[1:]
+	cv2.imwrite('faceswap.jpg', swap(head_file, face_file))
