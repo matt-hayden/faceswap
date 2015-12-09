@@ -210,19 +210,31 @@ def swap(head_file, face_file):
 	M = transformation_from_points(landmarks1[ALIGN_POINTS],
 				       landmarks2[ALIGN_POINTS])
 
+	head_mask = get_face_mask(im1, landmarks1)
 	mask = get_face_mask(im2, landmarks2)
 	warped_mask = warp_im(mask, M, im1.shape)
-	combined_mask = numpy.max([get_face_mask(im1, landmarks1), warped_mask],
+	combined_mask = numpy.max([head_mask, warped_mask],
 				  axis=0)
+	alpha = combined_mask[:,:,0]*256
+	#cv2.imwrite('layer-1-mask.png', alpha)
 
-	warped_im2 = warp_im(im2, M, im1.shape)
+	warped_im2 = warp_im(im2, M, im1.shape).astype(numpy.float64)
+	#cv2.imwrite('layer-1-original-color.png', warped_im2)
+	cv2.imwrite(face_file+'-alpha-uncorrected.png', cv2.merge((warped_im2[:,:,0],
+						       warped_im2[:,:,1],
+						       warped_im2[:,:,2],
+						       alpha)) )
 	warped_corrected_im2 = correct_colours(im1, warped_im2, landmarks1)
-	cv2.imwrite('intermediate.jpg', warped_corrected_im2)
-
-	output_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
-	return output_im
+	#cv2.imwrite('layer-1.png', warped_corrected_im2)
+	cv2.imwrite(face_file+'-alpha.png', cv2.merge((warped_corrected_im2[:,:,0],
+						       warped_corrected_im2[:,:,1],
+						       warped_corrected_im2[:,:,2],
+						       alpha)) )
+	blend_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
+	cv2.imwrite('preview.png', blend_im)
+	return ('preview.png', face_file+'-alpha.png')
 
 if __name__ == '__main__':
 	import sys
 	head_file, face_file = sys.argv[1:]
-	cv2.imwrite('faceswap.jpg', swap(head_file, face_file))
+	print swap(head_file, face_file)
