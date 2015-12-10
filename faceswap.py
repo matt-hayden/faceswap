@@ -172,7 +172,7 @@ def read_im_and_landmarks(fname, face_number=0):
     im = cv2.resize(im, (im.shape[1] * SCALE_FACTOR,
                          im.shape[0] * SCALE_FACTOR))
     if os.path.isfile(fname+'.facedetect'+'.npy'):
-        s = np.matrix(np.load(fname+'.facedetect'+'.npy'))
+        s = np.matrix(np.load(fname+'.facedetect'+'.npy')) # casting to matrix is required to avoid a broadcasting error
     else:
         s = get_landmarks(im, face_number=face_number)
         np.save(fname+'.facedetect', s)
@@ -206,6 +206,11 @@ def correct_colours(im1, im2, landmarks1):
                                                 im2_blur.astype(np.float64))
 
 def swap(head_file, face_file):
+	"""
+	Refactored from Matt's original code.
+
+	Returns a list of image files that can layer for further processing
+	"""
 	layer_filenames = [ head_file ]
 	im1, landmarks1 = read_im_and_landmarks(head_file)
 	im2, landmarks2 = read_im_and_landmarks(face_file)
@@ -221,7 +226,6 @@ def swap(head_file, face_file):
 	alpha = combined_mask[:,:,0]*256
 
 	warped_im2 = warp_im(im2, M, im1.shape).astype(np.float64)
-	#cv2.imwrite('layer-1-original-color.png', warped_im2)
         layer_filenames += [ head_file+'-alpha.png' ]
 	cv2.imwrite(layer_filenames[-1], cv2.merge((warped_im2[:,:,0],
 						    warped_im2[:,:,1],
@@ -239,6 +243,17 @@ def swap(head_file, face_file):
 	return layer_filenames
 
 if __name__ == '__main__':
+	# relies on ImageMagick's convert utility
+	import subprocess
 	import sys
+	
 	head_file, face_file = sys.argv[1:]
-	print swap(head_file, face_file)
+	file_out = head_file+'-faceswap.tiff'
+	assert not os.path.exists(file_out)
+	layer_files = swap(head_file, face_file)
+	assert layer_files
+	proc = subprocess.Popen(['convert']+layer_files+[file_out])
+	print "Merging {} files".format(len(layer_files))
+	if proc.wait() == 0:
+		print "Wrote", file_out
+
