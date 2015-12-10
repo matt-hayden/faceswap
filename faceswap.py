@@ -172,7 +172,7 @@ def read_im_and_landmarks(fname, face_number=0):
     im = cv2.resize(im, (im.shape[1] * SCALE_FACTOR,
                          im.shape[0] * SCALE_FACTOR))
     if os.path.isfile(fname+'.facedetect'+'.npy'):
-        s = np.load(fname+'.facedetect'+'.npy')
+        s = np.matrix(np.load(fname+'.facedetect'+'.npy'))
     else:
         s = get_landmarks(im, face_number=face_number)
         np.save(fname+'.facedetect', s)
@@ -206,6 +206,7 @@ def correct_colours(im1, im2, landmarks1):
                                                 im2_blur.astype(np.float64))
 
 def swap(head_file, face_file):
+	layer_filenames = [ head_file ]
 	im1, landmarks1 = read_im_and_landmarks(head_file)
 	im2, landmarks2 = read_im_and_landmarks(face_file)
 
@@ -218,23 +219,24 @@ def swap(head_file, face_file):
 	combined_mask = np.max([head_mask, warped_mask],
 				  axis=0)
 	alpha = combined_mask[:,:,0]*256
-	#cv2.imwrite('layer-1-mask.png', alpha)
 
 	warped_im2 = warp_im(im2, M, im1.shape).astype(np.float64)
 	#cv2.imwrite('layer-1-original-color.png', warped_im2)
-	cv2.imwrite(face_file+'-alpha-uncorrected.png', cv2.merge((warped_im2[:,:,0],
-						       warped_im2[:,:,1],
-						       warped_im2[:,:,2],
-						       alpha)) )
+        layer_filenames += [ head_file+'-alpha.png' ]
+	cv2.imwrite(layer_filenames[-1], cv2.merge((warped_im2[:,:,0],
+						    warped_im2[:,:,1],
+						    warped_im2[:,:,2],
+						    alpha)) )
 	warped_corrected_im2 = correct_colours(im1, warped_im2, landmarks1)
-	#cv2.imwrite('layer-1.png', warped_corrected_im2)
-	cv2.imwrite(face_file+'-alpha.png', cv2.merge((warped_corrected_im2[:,:,0],
-						       warped_corrected_im2[:,:,1],
-						       warped_corrected_im2[:,:,2],
-						       alpha)) )
+        layer_filenames += [ head_file+'-alpha-color-corrected.png' ]
+	cv2.imwrite(layer_filenames[-1], cv2.merge((warped_corrected_im2[:,:,0],
+						    warped_corrected_im2[:,:,1],
+						    warped_corrected_im2[:,:,2],
+						    alpha)) )
 	blend_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
-	cv2.imwrite('preview.png', blend_im)
-	return ('preview.png', face_file+'-alpha.png')
+        layer_filenames += [ head_file+'-blended.png' ]
+	cv2.imwrite(layer_filenames[-1], blend_im)
+	return layer_filenames
 
 if __name__ == '__main__':
 	import sys
