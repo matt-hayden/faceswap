@@ -42,10 +42,11 @@ If successful, a file `output.jpg` will be produced with the facial features
 from `<head image>` replaced with the facial features from `<face image>`.
 
 """
+import os, os.path
 
 import cv2
 import dlib
-import numpy
+import numpy as np
 
 #import sys
 
@@ -80,25 +81,22 @@ COLOUR_CORRECT_BLUR_FRAC = 0.6
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(PREDICTOR_PATH)
 
-class DetectorException(Exception):
+class FaceDetectException(Exception):
     pass
 
-class TooManyFaces(DetectorException):
+class TooManyFaces(FaceDetectException):
     pass
 
-class NoFaces(DetectorException):
+class NoFaces(FaceDetectException):
     pass
 
 
-def get_landmarks(im):
+def get_landmarks(im, face_number=0):
     rects = detector(im, 1)
-    
-    if len(rects) > 1:
-        raise TooManyFaces
-    if len(rects) == 0:
-        raise NoFaces
-
-    return numpy.matrix([[p.x, p.y] for p in predictor(im, rects[0]).parts()])
+    if len(rects):
+        return np.matrix([[p.x, p.y] for p in predictor(im, rects[face_number or 0]).parts()])
+    else:
+        return None
 
 def annotate_landmarks(im, landmarks):
     im = im.copy()
@@ -116,14 +114,14 @@ def draw_convex_hull(im, points, color):
     cv2.fillConvexPoly(im, points, color=color)
 
 def get_face_mask(im, landmarks):
-    im = numpy.zeros(im.shape[:2], dtype=numpy.float64)
+    im = np.zeros(im.shape[:2], dtype=np.float64)
 
     for group in OVERLAY_POINTS:
         draw_convex_hull(im,
                          landmarks[group],
                          color=1)
 
-    im = numpy.array([im, im, im]).transpose((1, 2, 0))
+    im = np.array([im, im, im]).transpose((1, 2, 0))
 
     im = (cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0) > 0) * 1.0
     im = cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0)
@@ -144,20 +142,20 @@ def transformation_from_points(points1, points2):
     # the following for more details:
     #   https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
 
-    points1 = points1.astype(numpy.float64)
-    points2 = points2.astype(numpy.float64)
+    points1 = points1.astype(np.float64)
+    points2 = points2.astype(np.float64)
 
-    c1 = numpy.mean(points1, axis=0)
-    c2 = numpy.mean(points2, axis=0)
+    c1 = np.mean(points1, axis=0)
+    c2 = np.mean(points2, axis=0)
     points1 -= c1
     points2 -= c2
 
-    s1 = numpy.std(points1)
-    s2 = numpy.std(points2)
+    s1 = np.std(points1)
+    s2 = np.std(points2)
     points1 /= s1
     points2 /= s2
 
-    U, S, Vt = numpy.linalg.svd(points1.T * points2)
+    U, S, Vt = np.linalg.svd(points1.T * points2)
 
     # The R we seek is in fact the transpose of the one given by U * Vt. This
     # is because the above formulation assumes the matrix goes on the right
@@ -165,20 +163,24 @@ def transformation_from_points(points1, points2):
     # left (with column vectors).
     R = (U * Vt).T
 
-    return numpy.vstack([numpy.hstack(((s2 / s1) * R,
+    return np.vstack([np.hstack(((s2 / s1) * R,
                                        c2.T - (s2 / s1) * R * c1.T)),
-                         numpy.matrix([0., 0., 1.])])
+                         np.matrix([0., 0., 1.])])
 
-def read_im_and_landmarks(fname):
+def read_im_and_landmarks(fname, face_number=0):
     im = cv2.imread(fname, cv2.IMREAD_COLOR)
     im = cv2.resize(im, (im.shape[1] * SCALE_FACTOR,
                          im.shape[0] * SCALE_FACTOR))
-    s = get_landmarks(im)
+    if os.path.isfile(fname+'.facedetect'+'.npy'):
+        s = np.load(fname+'.facedetect'+'.npy')
+    else:
+        s = get_landmarks(im, face_number=face_number)
+        np.save(fname+'.facedetect', s)
 
     return im, s
 
 def warp_im(im, M, dshape):
-    output_im = numpy.zeros(dshape, dtype=im.dtype)
+    output_im = np.zeros(dshape, dtype=im.dtype)
     cv2.warpAffine(im,
                    M[:2],
                    (dshape[1], dshape[0]),
@@ -188,9 +190,9 @@ def warp_im(im, M, dshape):
     return output_im
 
 def correct_colours(im1, im2, landmarks1):
-    blur_amount = COLOUR_CORRECT_BLUR_FRAC * numpy.linalg.norm(
-                              numpy.mean(landmarks1[LEFT_EYE_POINTS], axis=0) -
-                              numpy.mean(landmarks1[RIGHT_EYE_POINTS], axis=0))
+    blur_amount = COLOUR_CORRECT_BLUR_FRAC * np.linalg.norm(
+                              np.mean(landmarks1[LEFT_EYE_POINTS], axis=0) -
+                              np.mean(landmarks1[RIGHT_EYE_POINTS], axis=0))
     blur_amount = int(blur_amount)
     if blur_amount % 2 == 0:
         blur_amount += 1
@@ -200,8 +202,8 @@ def correct_colours(im1, im2, landmarks1):
     # Avoid divide-by-zero errors.
     im2_blur += 128 * (im2_blur <= 1.0)
 
-    return (im2.astype(numpy.float64) * im1_blur.astype(numpy.float64) /
-                                                im2_blur.astype(numpy.float64))
+    return (im2.astype(np.float64) * im1_blur.astype(np.float64) /
+                                                im2_blur.astype(np.float64))
 
 def swap(head_file, face_file):
 	im1, landmarks1 = read_im_and_landmarks(head_file)
@@ -213,12 +215,12 @@ def swap(head_file, face_file):
 	head_mask = get_face_mask(im1, landmarks1)
 	mask = get_face_mask(im2, landmarks2)
 	warped_mask = warp_im(mask, M, im1.shape)
-	combined_mask = numpy.max([head_mask, warped_mask],
+	combined_mask = np.max([head_mask, warped_mask],
 				  axis=0)
 	alpha = combined_mask[:,:,0]*256
 	#cv2.imwrite('layer-1-mask.png', alpha)
 
-	warped_im2 = warp_im(im2, M, im1.shape).astype(numpy.float64)
+	warped_im2 = warp_im(im2, M, im1.shape).astype(np.float64)
 	#cv2.imwrite('layer-1-original-color.png', warped_im2)
 	cv2.imwrite(face_file+'-alpha-uncorrected.png', cv2.merge((warped_im2[:,:,0],
 						       warped_im2[:,:,1],
