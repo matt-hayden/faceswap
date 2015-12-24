@@ -46,6 +46,7 @@ class HeadImage:
 				self.read()
 				if 0 < self.detect_faces():
 					self.set_mask()
+			print "Loaded", len(self.landmarks), "face(s) from", arg
 		else:
 			raise NotImplemented()
 	def loadz(self, arg):

@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/python3
 import os, os.path
 
 import cv2
@@ -71,20 +71,30 @@ def swap_many(head_filenames, face_filenames):
 		else:
 			yield hf.filename, False
 
+def scanz(args, extensions=['.jpg', '.png', '.jpeg', '.jp2']):
+	for arg in tqdm.tqdm(args, desc="Caching results"):
+		if os.path.isfile(arg+'.npz'):
+			continue
+		imh = HeadImage(arg)
+		if len(imh.landmarks) == 1:
+			imh.savez(arg+'.npz')
+		else:
+			print "skipping", arg
 
-if __name__ == '__main__':
-	import sys
 
-	if False:
-		for arg in tqdm.tqdm(sys.argv[1:]):
-			imh = HeadImage(arg)
-			if len(imh.landmarks) == 1:
-				imh.savez(imh.filename+'.npz')
-			else:
-				print "Skipping", arg
-	else:
-		face_files = [sys.argv[1]]
-		head_files = sys.argv[2:]
-		for head_file, result in tqdm.tqdm(swap_many(head_files, face_files), total=len(head_files)):
+def main(**kwargs):
+	if kwargs.pop('scan'):
+		args = expand_directories_in_args(kwargs.pop('<FILES>'))
+		return scanz(args)
+	elif kwargs.pop('swap'):
+		rcode = True
+		head_files = expand_directories_in_args([kwargs.pop('<HEAD_DIR>')])
+		print "Head files:", ','.join(head_files)
+		face_files = expand_directories_in_args([kwargs.pop('<FACE_DIR>')])
+		print "Face files:", ','.join(face_files)
+		for hf, result in tqdm.tqdm(swap_many(head_filenames=head_files,
+											  face_filenames=face_files), total=len(head_files)):
 			if not result:
 				print head_file, "failed"
+				rcode = False
+		return rcode
