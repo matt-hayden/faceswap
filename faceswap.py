@@ -48,9 +48,21 @@ import cv2
 import dlib
 import numpy as np
 
-#import sys
+from . import PREDICTOR_PATH
 
+
+class FaceDetectError(Exception):
+    pass
+
+
+"""
 PREDICTOR_PATH = "shape_predictor_68_face_landmarks.dat"
+if not os.path.isfile(PREDICTOR_PATH):
+	dirname, basename = os.path.split(__file__)
+	PREDICTOR_PATH = os.path.join(dirname, PREDICTOR_PATH)
+"""
+if not os.path.isfile(PREDICTOR_PATH):
+	raise FaceDetectError("'{}' not found".format(PREDICTOR_PATH))
 SCALE_FACTOR = 1 
 FEATHER_AMOUNT = 11
 
@@ -81,22 +93,6 @@ COLOUR_CORRECT_BLUR_FRAC = 0.6
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(PREDICTOR_PATH)
 
-class FaceDetectException(Exception):
-    pass
-
-class TooManyFaces(FaceDetectException):
-    pass
-
-class NoFaces(FaceDetectException):
-    pass
-
-
-def get_landmarks(im, face_number=0):
-    rects = detector(im, 1)
-    if len(rects):
-        return np.matrix([[p.x, p.y] for p in predictor(im, rects[face_number or 0]).parts()])
-    else:
-        return None
 
 def annotate_landmarks(im, landmarks):
     im = im.copy()
@@ -109,25 +105,12 @@ def annotate_landmarks(im, landmarks):
         cv2.circle(im, pos, 3, color=(0, 255, 255))
     return im
 
+
 def draw_convex_hull(im, points, color):
     points = cv2.convexHull(points)
     cv2.fillConvexPoly(im, points, color=color)
 
-def get_face_mask(im, landmarks):
-    im = np.zeros(im.shape[:2], dtype=np.float64)
 
-    for group in OVERLAY_POINTS:
-        draw_convex_hull(im,
-                         landmarks[group],
-                         color=1)
-
-    im = np.array([im, im, im]).transpose((1, 2, 0))
-
-    im = (cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0) > 0) * 1.0
-    im = cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0)
-
-    return im
-    
 def transformation_from_points(points1, points2):
     """
     Return an affine transformation [s * R | T] such that:
@@ -167,17 +150,6 @@ def transformation_from_points(points1, points2):
                                        c2.T - (s2 / s1) * R * c1.T)),
                          np.matrix([0., 0., 1.])])
 
-def read_im_and_landmarks(fname, face_number=0):
-    im = cv2.imread(fname, cv2.IMREAD_COLOR)
-    im = cv2.resize(im, (im.shape[1] * SCALE_FACTOR,
-                         im.shape[0] * SCALE_FACTOR))
-    if os.path.isfile(fname+'.facedetect'+'.npy'):
-        s = np.matrix(np.load(fname+'.facedetect'+'.npy')) # casting to matrix is required to avoid a broadcasting error
-    else:
-        s = get_landmarks(im, face_number=face_number)
-        np.save(fname+'.facedetect', s)
-
-    return im, s
 
 def warp_im(im, M, dshape):
     output_im = np.zeros(dshape, dtype=im.dtype)
@@ -188,6 +160,7 @@ def warp_im(im, M, dshape):
                    borderMode=cv2.BORDER_TRANSPARENT,
                    flags=cv2.WARP_INVERSE_MAP)
     return output_im
+
 
 def correct_colours(im1, im2, landmarks1):
     blur_amount = COLOUR_CORRECT_BLUR_FRAC * np.linalg.norm(
@@ -205,44 +178,9 @@ def correct_colours(im1, im2, landmarks1):
     return (im2.astype(np.float64) * im1_blur.astype(np.float64) /
                                                 im2_blur.astype(np.float64))
 
-def swap(head_file, face_file):
-	"""
-	Refactored from Matt's original code.
-
-	Returns a list of image files that can layer for further processing
-	"""
-	layer_filenames = [ head_file ]
-	im1, landmarks1 = read_im_and_landmarks(head_file)
-	im2, landmarks2 = read_im_and_landmarks(face_file)
-
-	M = transformation_from_points(landmarks1[ALIGN_POINTS],
-				       landmarks2[ALIGN_POINTS])
-
-	head_mask = get_face_mask(im1, landmarks1)
-	mask = get_face_mask(im2, landmarks2)
-	warped_mask = warp_im(mask, M, im1.shape)
-	combined_mask = np.max([head_mask, warped_mask],
-				  axis=0)
-	alpha = combined_mask[:,:,0]*256
-
-	warped_im2 = warp_im(im2, M, im1.shape).astype(np.float64)
-        layer_filenames += [ head_file+'-alpha.png' ]
-	cv2.imwrite(layer_filenames[-1], cv2.merge((warped_im2[:,:,0],
-						    warped_im2[:,:,1],
-						    warped_im2[:,:,2],
-						    alpha)) )
-	warped_corrected_im2 = correct_colours(im1, warped_im2, landmarks1)
-        layer_filenames += [ head_file+'-alpha-color-corrected.png' ]
-	cv2.imwrite(layer_filenames[-1], cv2.merge((warped_corrected_im2[:,:,0],
-						    warped_corrected_im2[:,:,1],
-						    warped_corrected_im2[:,:,2],
-						    alpha)) )
-	blend_im = im1 * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
-        layer_filenames += [ head_file+'-blended.png' ]
-	cv2.imwrite(layer_filenames[-1], blend_im)
-	return layer_filenames
 
 if __name__ == '__main__':
+	# a testing stub, see cli.py for actual implementation
 	# relies on ImageMagick's convert utility
 	import subprocess
 	import sys

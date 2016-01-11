@@ -4,7 +4,8 @@ import os, os.path
 import cv2
 import numpy as np
 
-from faceswap import FEATHER_AMOUNT, OVERLAY_POINTS, detector, draw_convex_hull, predictor
+from faceswap import FaceDetectError, FEATHER_AMOUNT, OVERLAY_POINTS, detector, draw_convex_hull, predictor
+
 
 def get_landmarks(im):
 	rects = detector(im, 1)
@@ -12,12 +13,13 @@ def get_landmarks(im):
 	for f in rects:
 		yield np.matrix( [[ p.x, p.y ] for p in predictor(im, f).parts()] )
 
-def get_face_mask(shape, landmarks):
+
+def get_face_mask(shape, face_landmarks):
 	im = np.zeros(shape[:2], dtype=np.float64)
 
 	for group in OVERLAY_POINTS:
 		draw_convex_hull(im,
-						 landmarks[group],
+						 face_landmarks[group],
 						 color=1)
 
 	im = np.array([im, im, im]).transpose((1, 2, 0))
@@ -27,9 +29,22 @@ def get_face_mask(shape, landmarks):
 
 	return im
 
+
+class HeadImageError(FaceDetectError):
+	pass
+
+
 class HeadImage:
+	def close(self, arg):
+		# use with contextlib.closing
+		# try to same some memory
+		del self.im
+		self.im = []
+		del self.mask
+		self.mask = []
 	def __init__(self, arg):
 		self.filename = ''
+		self.has_cache = False
 		self.im = []
 		self.landmarks = []
 		self.mask = []
@@ -51,6 +66,7 @@ class HeadImage:
 			raise NotImplemented()
 	def loadz(self, arg):
 		d = np.load(arg)
+		self.has_cache = True
 		self.filename = arg[:-4]
 		dirname, basename = os.path.split(self.filename)
 		self.label, _ = os.path.splitext(basename)
@@ -61,8 +77,10 @@ class HeadImage:
 			self.size = os.path.getsize(self.filename)
 		except:
 			self.size = None
-	def savez(self, arg):
-		np.savez(arg, landmarks=self.landmarks, shape=self.shape)
+	def savez(self, arg=''):
+		np.savez(arg or self.filename+'.npz', landmarks=self.landmarks, shape=self.shape)
+		self.has_cache = True
+		return True
 	def read(self, filename=None):
 		if filename:
 			self.filename = filename
@@ -75,25 +93,41 @@ class HeadImage:
 		self.landmarks = list(get_landmarks(self.im))
 		return len(self.landmarks)
 	def resize(self, factor=1.):
-		if factor not in (0., 1.):
-			scaled = cw2.resize(self.im, (self.shape[1]*factor, self.shape[0]*factor))
-			self.im = scaled
-			self.shape = self.im.shape
-	def set_mask(self, arg=None, **kwargs):
-		if arg:
+		# TODO: rescale self.landmarks
+		scaled = None
+		if isinstance(factor, float): # or Decimal, etc.
+			if (0. < factor) and (factor != 1.):
+				scaled = cv2.resize(self.im, (self.shape[1]*factor, self.shape[0]*factor))
+		elif isinstance(factor, (tuple, list)):
+			scaled = cv2.resize(self.im, (factor[1], factor[0]))
+		if scaled:
+			self.im, self.shape = scaled, scaled.shape
+	def horizontal_flip(self):
+		# TODO: flip landmarks
+		flipped = np.fliplr(self.im) # or flipud if I'm wrong about majorness
+		if flipped:
+			self.im, self.shape = flipped, flipped.shape
+	def set_mask(self, arg=-1, **kwargs):
+		if isinstance(arg, int):
+			if not len(self.landmarks):
+				raise HeadImageError("'{}' has no detected faces".format(self.filename))
+			self.mask = get_face_mask(self.shape, self.landmarks[arg], **kwargs)
+		elif len(arg): # assume arg is an image
 			self.mask = arg
-		elif len(self.landmarks):
-			self.mask = get_face_mask(self.shape, self.landmarks[0], **kwargs)
 		else:
-			print self.filename, ": no faces found"
+			raise HeadSwapError("Cannot set mask to {}".format(type(arg)) )
 	def __len__(self):
 		return len(self.landmarks)
 	def describe(self):
-		label = self.label
-		return [ label, self.filename, "{:} b image {}".format(self.size, self.shape),
-				 "{} faces detected".format(len(self)), ("Loaded" if len(self.im) else "Not loaded") ]
+		"""Form a list of characteristics
+		"""
+		return [ self.label,
+				 self.filename,
+				 "{:} b image {}".format(self.size, self.shape),
+				 "{} faces detected".format(len(self)),
+				 ("Loaded" if len(self.im) else "Not loaded") ]
 	def __repr__(self):
-		return 'HeadImage<'+', '.join(self.describe())+'>'
+		return 'HeadImage<'+','.join(self.describe())+'>'
 	@property
 	def alpha(self):
 		if len(self.mask):
