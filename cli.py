@@ -21,16 +21,15 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 	"""
 	Returns a list of image files that can layer for further processing
 	"""
+	def verify_dir(dirname):
+		if not os.path.exists(dirname):
+			os.makedirs(dirname)
+		if not os.path.isdir(dirname):
+			raise FaceSwapError("'{}' not valid".format(dirname))
 	if working_directory:
-		if not os.path.exists(working_directory):
-			os.makedirs(working_directory)
-		elif os.path.isfile(working_directory):
-			raise FaceSwapError("'{}' not valid".format(working_directory))
+		verify_dir(working_directory)
 	if output_directory:
-		if not os.path.exists(output_directory):
-			os.makedirs(output_directory)
-		elif os.path.isfile(output_directory):
-			raise FaceSwapError("'{}' not valid".format(output_directory))
+		verify_dir(output_directory)
 	head_files = []
 	for f in tqdm.tqdm(head_filenames, desc="Scanning heads"):
 		i = HeadImage(f)
@@ -59,17 +58,20 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 		if output_directory:
 			output_filename = os.path.join(output_directory, output_filename)
 		layer_filenames = [ hf.filename ]
+		h_landmarks = hf.landmarks[0]
+		h_align = h_landmarks[ALIGN_POINTS]
 
 		for ff in face_files:
+			f_landmarks = ff.landmarks[0]
+			f_align = f_landmarks[ALIGN_POINTS]
 			results_file = hf.label+'_'+ff.label
 			if working_directory:
 				results_file = os.path.join(working_directory, results_file)
 
-			M = transformation_from_points(hf.landmarks[0][ALIGN_POINTS],
-										   ff.landmarks[0][ALIGN_POINTS])
+			M = transformation_from_points(h_align, f_align)
 			warped_mask = warp_im(ff.mask, M, hf.shape)
 			combined_mask = np.max([hf.mask, warped_mask], axis=0)
-			face_alpha = combined_mask[:,:,0]*256 # pick a channel to be substituted for alpha
+			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha
 			if not len(ff.im):
 				print "loading", ff.filename
 				ff.read()
@@ -96,7 +98,7 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 			if not len(hf.im):
 				print "loading", hf.filename
 				hf.read()
-			warped_corrected_im2 = correct_colours(hf.im, warped_im2, hf.landmarks[0])
+			warped_corrected_im2 = correct_colours(hf.im, warped_im2, h_landmarks)
 			layer_filenames += [ results_file+'-alpha-color-corrected.png' ]
 			cv2.imwrite(layer_filenames[-1], cv2.merge((warped_corrected_im2[:,:,0],
 									warped_corrected_im2[:,:,1],

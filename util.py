@@ -33,8 +33,14 @@ def expand_directories_in_args(args, extensions=['.jpg', '.png', '.jpeg', '.jp2'
 		of, x = os.path.splitext(f)
 		x = x.lower()
 		if '.npz' == x:
-			if of in files:
-				files.remove(of)
+			cachefile, f = f, of
+			if f in files:
+				f_time, cachefile_time = os.path.getmtime(f), os.path.getmtime(cachefile)
+				if f_time < cachefile_time:
+					files.remove(f)
+				else:
+					files.remove(cachefile)
+					trash([cachefile])
 		elif x not in extensions:
 			print "warning:", f, "maybe not image"
 	return files

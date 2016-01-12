@@ -48,6 +48,7 @@ class HeadImage:
 		self.im = []
 		self.landmarks = []
 		self.mask = []
+		self.modified = False
 		self.shape = []
 		self.size = None
 		if os.path.isfile(arg):
@@ -67,7 +68,7 @@ class HeadImage:
 	def loadz(self, arg):
 		d = np.load(arg)
 		self.has_cache = True
-		self.filename = arg[:-4]
+		self.filename, _ = os.path.splitext(arg)
 		dirname, basename = os.path.split(self.filename)
 		self.label, _ = os.path.splitext(basename)
 		# casting to matrix is required to avoid a broadcasting error
@@ -92,22 +93,31 @@ class HeadImage:
 			self.read()
 		self.landmarks = list(get_landmarks(self.im))
 		return len(self.landmarks)
-	def resize(self, factor=1.):
-		# TODO: rescale self.landmarks
-		scaled = None
-		if isinstance(factor, float): # or Decimal, etc.
-			if (0. < factor) and (factor != 1.):
-				scaled = cv2.resize(self.im, (self.shape[1]*factor, self.shape[0]*factor))
-		elif isinstance(factor, (tuple, list)):
-			scaled = cv2.resize(self.im, (factor[1], factor[0]))
-		if scaled:
-			self.im, self.shape = scaled, scaled.shape
-	def horizontal_flip(self):
-		# TODO: flip landmarks
-		flipped = np.fliplr(self.im) # or flipud if I'm wrong about majorness
-		if flipped:
-			self.im, self.shape = flipped, flipped.shape
-	def set_mask(self, arg=-1, **kwargs):
+	def resize(self, factor=1., shape=None):
+		assert isinstance(factor, float) # or Decimal, etc.
+		if factor == 1.:
+			return
+		elif factor <= 0:
+			raise ValueError("factor must be positive")
+		if not shape:
+			shape = (self.shape[1]*factor, self.shape[0]*factor)
+		s_image = cv2.resize(self.im, shape) if self.im else None
+		s_mask = cv2.resize(self.mask, shape) if self.mask else None
+		for L in self.landmarks:
+			L[0] *= factor_x
+			L[1] *= factor_y
+		self.im, self.modified, self.shape = s_image, True, shape
+		self.set_mask(s_mask)
+	def horizontal_flip(self, axis=None):
+		f_image = np.fliplr(self.im) if self.im else None
+		f_mask = np.fliplr(self.mask) if self.mask else None
+		for L in self.landmarks:
+			m = self.shape[0]
+			f_x = m-L[:, 1]
+			L[:, 1] = f_x
+		self.im, self.modified = f_image, True
+		self.set_mask(f_mask)
+	def set_mask(self, arg=0, **kwargs):
 		if isinstance(arg, int):
 			if not len(self.landmarks):
 				raise HeadImageError("'{}' has no detected faces".format(self.filename))
