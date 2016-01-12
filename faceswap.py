@@ -6,7 +6,7 @@ import dlib
 import numpy as np
 
 from . import PREDICTOR_PATH
-
+from mutil import *
 
 class FaceDetectError(Exception):
 	pass
@@ -100,30 +100,10 @@ def transform_from_points(points1, points2):
 	# left (with column vectors).
 	R = (U * Vt).T
 	angle = np.arccos(R[0,0]) # radians
+	# each of [ np.arccos(R[0,0]), -np.arcsin(R[1,0]), np.arcsin(R[0,1]), np.arccos(R[1,1]) ] is the same angle
 	translation = c2.T - scale*R * c1.T
 	
 	return scale, angle, translation.T
-
-
-def make_transform_matrix(scale, angle, translation):
-	# output is a transformation matrix:
-	### original syntax:
-	#M0 = np.vstack([ np.hstack(( (s2 / s1) * R,
-	#							 c2.T - (s2 / s1) * R * c1.T )),
-	#			     np.matrix([0., 0., 1.]) ])
-	#M = np.ndarray((3,3), dtype=np.float64)
-	#M[2, :] = [0., 0., 1.]
-	M = np.identity(3, dtype=np.float64)
-
-	c = np.cos(angle)
-	s = np.sin(angle)
-	R = np.matrix( [(c, s), (-s, c)], dtype=np.float64)
-	# each of [ np.arccos(R[0,0]), -np.arcsin(R[1,0]), np.arcsin(R[0,1]), np.arccos(R[1,1]) ] is the same angle
-	M[0:2, 0:2] = scale*R
-	M[0:2, 2] = translation
-
-	#assert np.allclose(M0, M)
-	return M
 
 
 def transform_matrix_from_points(*args):
