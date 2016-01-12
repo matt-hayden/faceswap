@@ -44,14 +44,11 @@ class HeadImage:
 		# try to same some memory
 		del self.im
 		self.im = []
-		del self.mask
-		self.mask = []
 	def __init__(self, arg):
 		self.filename = ''
 		self.has_cache = False
 		self.im = []			# always has a valid len()
 		self.landmarks = []
-		self.mask = []
 		self.modified = False
 		self.shape = []
 		self.size = None
@@ -62,12 +59,9 @@ class HeadImage:
 			self.label, ext = os.path.splitext(basename)
 			if ext.lower() in [ '.npz' ]:
 				self.loadz(arg)
-				#self.set_mask()
 			else:
 				self.read()
 				self.detect_faces()
-				#if 0 < self.detect_faces():
-				#	self.set_mask()
 			print "Loaded", len(self.landmarks), "face(s) from", arg
 		elif isinstance(arg, np.ndarray):
 			self.im = arg
@@ -122,50 +116,12 @@ class HeadImage:
 		for L in new_hi.landmarks:
 			for p in L:
 				assert (p <= self.shape[:2]).all()
-		#new_hi.set_mask()
 		return new_hi
-	### OBSOLETE:
-	def resize(self, factor=1., shape=None):
-		assert isinstance(factor, float) # or Decimal, etc.
-		if factor == 1.:
-			return
-		elif factor <= 0:
-			raise ValueError("factor must be positive")
-		if not shape:
-			shape = (self.shape[1]*factor, self.shape[0]*factor)
-		s_image = cv2.resize(self.im, shape) if self.im else None
-		s_mask = cv2.resize(self.mask, shape) if self.mask else None
-		for L in self.landmarks:
-			L[0] *= factor_x
-			L[1] *= factor_y
-		self.im, self.modified, self.shape = s_image, True, shape
-		#self.set_mask(s_mask)
-	def horizontal_flip(self, axis=None):
-		f_image = np.fliplr(self.im) if self.im else None
-		f_mask = np.fliplr(self.mask) if self.mask else None
-		for L in self.landmarks:
-			m = self.shape[0]
-			f_x = m-L[:, 1]
-			L[:, 1] = f_x
-		self.im, self.modified = f_image, True
-		#self.set_mask(f_mask)
-	def set_mask(self, arg=0, **kwargs):
-		# .im could be None
-		if isinstance(arg, int):
-			if not len(self.landmarks):
-				raise HeadImageError("'{}' has no detected faces".format(self.filename))
-			self.mask = get_face_mask(self.shape, self.landmarks[arg], **kwargs)
-		elif isinstance(arg, np.ndarray):
-			if (arg.shape == self.shape).all():
-				self.mask = arg
-			else:
-				raise HeadImageError("set_mask({}) offered a different size".format(type(arg)) )
-		else:
-			raise NotImplementedError("set_mask({}) not implemented".format(type(arg)) )
-		#assert (self.mask.shape == self.shape).all()
-	### END OF OBSOLETE
 	def get_mask(self, arg=0, **kwargs):
 		# .im could be None
+		if not len(self.landmarks):
+			if self.detect_faces() < 1:
+				raise HeadImageError("No faces detected")
 		return get_face_mask(self.shape, self.landmarks[arg], **kwargs)
 	def __len__(self):
 		return len(self.landmarks)
@@ -179,10 +135,6 @@ class HeadImage:
 				 ("Loaded" if len(self.im) else "Not loaded") ]
 	def __repr__(self):
 		return 'HeadImage<'+','.join(self.describe())+'>'
-	@property
-	def alpha(self):
-		if len(self.mask):
-			return self.mask[:,:,0]*256
 	def get_pdistances(self):
 		"""Pupillary distances for each face
 		"""
@@ -195,8 +147,8 @@ class HeadImage:
 		blur_amount = int(blur_frac * self.get_pdistances()[face_number])
 		if blur_amount % 2 == 0:
 			blur_amount += 1
-		im1_blur = cv2.GaussianBlur(self.im, (blur_amount, blur_amount), 0)
-		im2_blur = cv2.GaussianBlur(other_image, (blur_amount, blur_amount), 0)
+		im1_blur = cv2.GaussianBlur(self.im, (blur_amount,)*2, 0)
+		im2_blur = cv2.GaussianBlur(other_image, (blur_amount,)*2, 0)
 	
 		# Avoid divide-by-zero errors.
 		im2_blur += 128 * (im2_blur <= 1.0)
