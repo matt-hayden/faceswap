@@ -99,7 +99,6 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 				my_hf = hf
 			# end of hack
 			M = mutil.make_transform_matrix(scale, angle, translation)
-			#M = cv2.getRotationMatrix2D(-translation, angle, scale) # for example
 			warped_mask = warp_im(ff.get_mask(), M, my_hf.shape)
 			combined_mask = np.max([my_hf.get_mask(), warped_mask], axis=0)
 			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha
