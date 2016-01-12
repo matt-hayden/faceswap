@@ -7,7 +7,7 @@ import numpy as np
 
 import tqdm
 
-from faceswap import FaceDetectError, ALIGN_POINTS, correct_colours, transformation_from_points, warp_im
+from faceswap import FaceDetectError, ALIGN_POINTS, correct_colours, transform_matrix_from_points, warp_im
 from util import *
 
 from headimage import HeadImage
@@ -68,7 +68,7 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 			if working_directory:
 				results_file = os.path.join(working_directory, results_file)
 
-			M = transformation_from_points(h_align, f_align)
+			M = transform_matrix_from_points(h_align, f_align)
 			warped_mask = warp_im(ff.mask, M, hf.shape)
 			combined_mask = np.max([hf.mask, warped_mask], axis=0)
 			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha

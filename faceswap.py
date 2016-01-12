@@ -62,7 +62,7 @@ def draw_convex_hull(im, points, color):
 	cv2.fillConvexPoly(im, points, color=color)
 
 
-def transformation_from_points(points1, points2):
+def transform_from_points(points1, points2):
 	"""
 	Return an affine transformation [s * R | T] such that:
 
@@ -79,13 +79,16 @@ def transformation_from_points(points1, points2):
 	points1 = points1.astype(np.float64)
 	points2 = points2.astype(np.float64)
 
+	# these are ordered pairs
 	c1 = np.mean(points1, axis=0)
 	c2 = np.mean(points2, axis=0)
 	points1 -= c1
 	points2 -= c2
 
+	# standard deviation is a measure of size (like dispersion)
 	s1 = np.std(points1)
 	s2 = np.std(points2)
+	scale = (s2/s1)
 	points1 /= s1
 	points2 /= s2
 
@@ -96,10 +99,26 @@ def transformation_from_points(points1, points2):
 	# (with row vectors) where as our solution requires the matrix to be on the
 	# left (with column vectors).
 	R = (U * Vt).T
+	translation = c2.T - scale*R * c1.T
+	
+	return scale, R, translation
 
-	return np.vstack([ np.hstack(( (s2 / s1) * R,
-								   c2.T - (s2 / s1) * R * c1.T )),
-					   np.matrix([0., 0., 1.]) ])
+
+def transform_matrix_from_points(*args):
+	scale, R, translation = transform_from_points(*args)
+	# output is a transformation matrix:
+	### original syntax:
+	#M0 = np.vstack([ np.hstack(( (s2 / s1) * R,
+	#							 c2.T - (s2 / s1) * R * c1.T )),
+	#			     np.matrix([0., 0., 1.]) ])
+	M = np.ndarray((3,3), dtype=np.float64)
+	M[2, :] = [0., 0., 1.]
+
+	M[0:2, 0:2] = scale*R
+	M[0:2, 2] = translation.T
+
+	#assert np.allclose(M0, M)
+	return M
 
 
 def warp_im(im, M, dshape):
