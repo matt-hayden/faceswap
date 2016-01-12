@@ -18,14 +18,12 @@ def get_face_mask(shape, face_landmarks, feather_amount=11, dtype=np.float64):
 	im = np.zeros(shape[:2], dtype=dtype)
 
 	for group in OVERLAY_POINTS:
-		draw_convex_hull(im,
-						 face_landmarks[group],
-						 color=1)
+		draw_convex_hull(im, face_landmarks[group], color=1)
 
 	im = np.array([im, im, im]).transpose((1, 2, 0))
 
-	im = (cv2.GaussianBlur(im, (feather_amount, feather_amount), 0) > 0) * 1.0
-	im = cv2.GaussianBlur(im, (feather_amount, feather_amount), 0)
+	im = (cv2.GaussianBlur(im, (feather_amount,)*2, 0) > 0) * 1.0
+	im = cv2.GaussianBlur(im, (feather_amount,)*2, 0)
 
 	return im
 
@@ -51,24 +49,31 @@ class HeadImage:
 	def __init__(self, arg):
 		self.filename = ''
 		self.has_cache = False
-		self.im = []
+		self.im = []			# always has a valid len()
 		self.landmarks = []
 		self.mask = []
 		self.modified = False
 		self.shape = []
 		self.size = None
-		if os.path.isfile(arg):
+		if isinstance(arg, basestring):
+			assert os.path.isfile(arg)
 			self.filename = arg
 			dirname, basename = os.path.split(arg)
 			self.label, ext = os.path.splitext(basename)
 			if ext.lower() in [ '.npz' ]:
 				self.loadz(arg)
-				self.set_mask()
+				#self.set_mask()
 			else:
 				self.read()
-				if 0 < self.detect_faces():
-					self.set_mask()
+				self.detect_faces()
+				#if 0 < self.detect_faces():
+				#	self.set_mask()
 			print "Loaded", len(self.landmarks), "face(s) from", arg
+		elif isinstance(arg, np.ndarray):
+			self.im = arg
+			self.modified = True
+			self.shape = arg.shape
+			self.size = arg.nbytes
 		else:
 			raise NotImplemented()
 	def loadz(self, arg):
@@ -88,17 +93,38 @@ class HeadImage:
 		np.savez(arg or self.filename+'.npz', landmarks=self.landmarks, shape=self.shape)
 		self.has_cache = True
 		return True
-	def read(self, filename=None):
+	def reread(self, filename=None):
 		if filename:
 			self.filename = filename
 		self.size = os.path.getsize(self.filename)
 		self.im = cv2.imread(self.filename, cv2.IMREAD_COLOR)
 		self.shape = self.im.shape
-	def detect_faces(self):
+	def read(self, filename=None):
 		if not len(self.im):
-			self.read()
+			self.reread(filename=filename)
+	def detect_faces(self):
+		self.read()
 		self.landmarks = list(get_landmarks(self.im))
+		#self.landmarks = np.array(get_landmarks(self.im))
+		for L in self.landmarks:
+			for p in L:
+				assert (p <= self.shape[:2]).all()
 		return len(self.landmarks)
+	def get_rescaled(self, scale, **kwargs):
+		assert isinstance(scale, float)
+		params = kwargs
+		if 0 < scale:
+			params = { 'fx': scale, 'fy': scale, 'dsize': (0,0) }
+		self.read()
+		new_image = cv2.resize(self.im, **params)
+		new_hi = HeadImage(new_image)
+		new_hi.landmarks = [ scale*L for L in self.landmarks ]
+		for L in new_hi.landmarks:
+			for p in L:
+				assert (p <= self.shape[:2]).all()
+		#new_hi.set_mask()
+		return new_hi
+	### OBSOLETE:
 	def resize(self, factor=1., shape=None):
 		assert isinstance(factor, float) # or Decimal, etc.
 		if factor == 1.:
@@ -113,7 +139,7 @@ class HeadImage:
 			L[0] *= factor_x
 			L[1] *= factor_y
 		self.im, self.modified, self.shape = s_image, True, shape
-		self.set_mask(s_mask)
+		#self.set_mask(s_mask)
 	def horizontal_flip(self, axis=None):
 		f_image = np.fliplr(self.im) if self.im else None
 		f_mask = np.fliplr(self.mask) if self.mask else None
@@ -122,16 +148,25 @@ class HeadImage:
 			f_x = m-L[:, 1]
 			L[:, 1] = f_x
 		self.im, self.modified = f_image, True
-		self.set_mask(f_mask)
+		#self.set_mask(f_mask)
 	def set_mask(self, arg=0, **kwargs):
+		# .im could be None
 		if isinstance(arg, int):
 			if not len(self.landmarks):
 				raise HeadImageError("'{}' has no detected faces".format(self.filename))
 			self.mask = get_face_mask(self.shape, self.landmarks[arg], **kwargs)
-		elif len(arg): # assume arg is an image
-			self.mask = arg
+		elif isinstance(arg, np.ndarray):
+			if (arg.shape == self.shape).all():
+				self.mask = arg
+			else:
+				raise HeadImageError("set_mask({}) offered a different size".format(type(arg)) )
 		else:
-			raise HeadSwapError("Cannot set mask to {}".format(type(arg)) )
+			raise NotImplementedError("set_mask({}) not implemented".format(type(arg)) )
+		#assert (self.mask.shape == self.shape).all()
+	### END OF OBSOLETE
+	def get_mask(self, arg=0, **kwargs):
+		# .im could be None
+		return get_face_mask(self.shape, self.landmarks[arg], **kwargs)
 	def __len__(self):
 		return len(self.landmarks)
 	def describe(self):
@@ -152,6 +187,7 @@ class HeadImage:
 		"""Pupillary distances for each face
 		"""
 		return [ pdistance(L) for L in self.landmarks ]
+		#return np.fromiter((pdistance(L) for L in self.landmarks), dtype=np.int)
 	def correct_colours(self, other_image, face_number=0, blur_frac=0.6, dtype=np.float64):
 		"""Colors from self images are overlayed onto another image
 		Stolen from Matt's original code
