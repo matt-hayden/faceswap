@@ -7,7 +7,9 @@ import numpy as np
 
 import tqdm
 
-from faceswap import FaceDetectError, ALIGN_POINTS, correct_colours, transform_matrix_from_points, warp_im
+from . import *
+from faceswap import *
+import mutil
 from util import *
 
 from headimage import HeadImage
@@ -68,7 +70,9 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 			if working_directory:
 				results_file = os.path.join(working_directory, results_file)
 
-			M = transform_matrix_from_points(h_align, f_align)
+			scale, angle, translation = transform_from_points(h_align, f_align)
+			M = mutil.make_transform_matrix(scale, angle, translation)
+			#M = transform_matrix_from_points(h_align, f_align)
 			warped_mask = warp_im(ff.mask, M, hf.shape)
 			combined_mask = np.max([hf.mask, warped_mask], axis=0)
 			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha
@@ -98,7 +102,8 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 			if not len(hf.im):
 				print "loading", hf.filename
 				hf.read()
-			warped_corrected_im2 = correct_colours(hf.im, warped_im2, h_landmarks)
+			#warped_corrected_im2 = correct_colours(hf.im, warped_im2, h_landmarks)
+			warped_corrected_im2 = hf.correct_colours(warped_im2)
 			layer_filenames += [ results_file+'-alpha-color-corrected.png' ]
 			cv2.imwrite(layer_filenames[-1], cv2.merge((warped_corrected_im2[:,:,0],
 									warped_corrected_im2[:,:,1],

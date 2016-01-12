@@ -4,18 +4,18 @@ import os, os.path
 import cv2
 import numpy as np
 
-from faceswap import FaceDetectError, FEATHER_AMOUNT, OVERLAY_POINTS, detector, draw_convex_hull, predictor
+#from faceswap import FaceDetectError, OVERLAY_POINTS, detector, draw_convex_hull, predictor
+from faceswap import *
 
 
 def get_landmarks(im):
 	rects = detector(im, 1)
-	# np.matrix([[p.x, p.y] for p in predictor(im, rects[face_number or 0]).parts()])
 	for f in rects:
 		yield np.matrix( [[ p.x, p.y ] for p in predictor(im, f).parts()] )
 
 
-def get_face_mask(shape, face_landmarks):
-	im = np.zeros(shape[:2], dtype=np.float64)
+def get_face_mask(shape, face_landmarks, feather_amount=11, dtype=np.float64):
+	im = np.zeros(shape[:2], dtype=dtype)
 
 	for group in OVERLAY_POINTS:
 		draw_convex_hull(im,
@@ -24,13 +24,19 @@ def get_face_mask(shape, face_landmarks):
 
 	im = np.array([im, im, im]).transpose((1, 2, 0))
 
-	im = (cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0) > 0) * 1.0
-	im = cv2.GaussianBlur(im, (FEATHER_AMOUNT, FEATHER_AMOUNT), 0)
+	im = (cv2.GaussianBlur(im, (feather_amount, feather_amount), 0) > 0) * 1.0
+	im = cv2.GaussianBlur(im, (feather_amount, feather_amount), 0)
 
 	return im
 
 
-class HeadImageError(FaceDetectError):
+def pdistance(landmarks):
+	return np.linalg.norm(
+		   np.mean(landmarks[LEFT_EYE_POINTS], axis=0) -
+		   np.mean(landmarks[RIGHT_EYE_POINTS], axis=0))
+
+
+class HeadImageError(Exception):
 	pass
 
 
@@ -142,6 +148,24 @@ class HeadImage:
 	def alpha(self):
 		if len(self.mask):
 			return self.mask[:,:,0]*256
-		
-		
+	def get_pdistances(self):
+		"""Pupillary distances for each face
+		"""
+		return [ pdistance(L) for L in self.landmarks ]
+	def correct_colours(self, other_image, face_number=0, blur_frac=0.6, dtype=np.float64):
+		"""Colors from self images are overlayed onto another image
+		Stolen from Matt's original code
+		"""
+		blur_amount = int(blur_frac * self.get_pdistances()[face_number])
+		if blur_amount % 2 == 0:
+			blur_amount += 1
+		im1_blur = cv2.GaussianBlur(self.im, (blur_amount, blur_amount), 0)
+		im2_blur = cv2.GaussianBlur(other_image, (blur_amount, blur_amount), 0)
+	
+		# Avoid divide-by-zero errors.
+		im2_blur += 128 * (im2_blur <= 1.0)
+	
+		return (other_image.astype(dtype) * im1_blur.astype(dtype) /
+												 im2_blur.astype(dtype))
+
 

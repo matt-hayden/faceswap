@@ -5,41 +5,27 @@ import cv2
 import dlib
 import numpy as np
 
-from . import PREDICTOR_PATH
-from mutil import *
-
-class FaceDetectError(Exception):
-	pass
+from . import *		# some constants are moved into __init__.py
+import mutil		# some matrix methods are reimplemented in mutil.py
 
 
 if not os.path.isfile(PREDICTOR_PATH):
 	raise FaceDetectError("'{}' not found".format(PREDICTOR_PATH))
-SCALE_FACTOR = 1 
-FEATHER_AMOUNT = 11
 
-FACE_POINTS = list(range(17, 68))
-MOUTH_POINTS = list(range(48, 61))
-RIGHT_BROW_POINTS = list(range(17, 22))
-LEFT_BROW_POINTS = list(range(22, 27))
-RIGHT_EYE_POINTS = list(range(36, 42))
-LEFT_EYE_POINTS = list(range(42, 48))
-NOSE_POINTS = list(range(27, 35))
-JAW_POINTS = list(range(0, 17))
 
 # Points used to line up the images.
-ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_EYE_POINTS + LEFT_EYE_POINTS +
-							   RIGHT_BROW_POINTS + NOSE_POINTS + MOUTH_POINTS)
+#ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_EYE_POINTS + LEFT_EYE_POINTS +
+#							   RIGHT_BROW_POINTS + NOSE_POINTS + MOUTH_POINTS)
+ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_BROW_POINTS + MOUTH_POINTS)
 
 # Points from the second image to overlay on the first. The convex hull of each
 # element will be overlaid.
-OVERLAY_POINTS = [
-	LEFT_EYE_POINTS + RIGHT_EYE_POINTS + LEFT_BROW_POINTS + RIGHT_BROW_POINTS,
-	NOSE_POINTS + MOUTH_POINTS,
-]
+#OVERLAY_POINTS = [
+#	LEFT_EYE_POINTS + RIGHT_EYE_POINTS + LEFT_BROW_POINTS + RIGHT_BROW_POINTS,
+#	NOSE_POINTS + MOUTH_POINTS,
+#]
+OVERLAY_POINTS = [ FACE_POINTS, ]
 
-# Amount of blur to use during colour correction, as a fraction of the
-# pupillary distance.
-COLOUR_CORRECT_BLUR_FRAC = 0.6
 
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(PREDICTOR_PATH)
@@ -62,7 +48,7 @@ def draw_convex_hull(im, points, color):
 	cv2.fillConvexPoly(im, points, color=color)
 
 
-def transform_from_points(points1, points2):
+def transform_from_points(points1, points2, dtype=np.float64):
 	"""
 	Return an affine transformation [s * R | T] such that:
 
@@ -76,8 +62,8 @@ def transform_from_points(points1, points2):
 	# the following for more details:
 	#   https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
 
-	points1 = points1.astype(np.float64)
-	points2 = points2.astype(np.float64)
+	points1 = points1.astype(dtype)
+	points2 = points2.astype(dtype)
 
 	# these are ordered pairs
 	c1 = np.mean(points1, axis=0)
@@ -107,8 +93,10 @@ def transform_from_points(points1, points2):
 
 
 def transform_matrix_from_points(*args):
+	"""A stub function that preserves the functionality of Matt's transformation_from_points()
+	"""
 	scale, angle, translation = transform_from_points(*args)
-	return make_transform_matrix(scale, angle, translation)
+	return mutil.make_transform_matrix(scale, angle, translation)
 
 
 def warp_im(im, M, dshape):
@@ -121,20 +109,4 @@ def warp_im(im, M, dshape):
 				   flags=cv2.WARP_INVERSE_MAP)
 	return output_im
 
-
-def correct_colours(im1, im2, landmarks1):
-	blur_amount = COLOUR_CORRECT_BLUR_FRAC * np.linalg.norm(
-				   np.mean(landmarks1[LEFT_EYE_POINTS], axis=0) -
-				   np.mean(landmarks1[RIGHT_EYE_POINTS], axis=0))
-	blur_amount = int(blur_amount)
-	if blur_amount % 2 == 0:
-		blur_amount += 1
-	im1_blur = cv2.GaussianBlur(im1, (blur_amount, blur_amount), 0)
-	im2_blur = cv2.GaussianBlur(im2, (blur_amount, blur_amount), 0)
-
-	# Avoid divide-by-zero errors.
-	im2_blur += 128 * (im2_blur <= 1.0)
-
-	return (im2.astype(np.float64) * im1_blur.astype(np.float64) /
-												im2_blur.astype(np.float64))
 
