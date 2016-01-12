@@ -48,6 +48,7 @@ class HeadImage:
 		self.filename = ''
 		self.has_cache = False
 		self.im = []			# always has a valid len()
+		self.label = ''
 		self.landmarks = []
 		self.modified = False
 		self.shape = []
@@ -112,7 +113,7 @@ class HeadImage:
 		self.read()
 		new_image = cv2.resize(self.im, **params)
 		new_hi = HeadImage(new_image)
-		new_hi.landmarks = [ scale*L for L in self.landmarks ]
+		new_hi.landmarks = [ (scale*L).astype(np.uint) for L in self.landmarks ]
 		for L in new_hi.landmarks:
 			for p in L:
 				assert (p <= self.shape[:2]).all()
@@ -128,8 +129,8 @@ class HeadImage:
 	def describe(self):
 		"""Form a list of characteristics
 		"""
-		return [ self.label,
-				 self.filename,
+		return [ self.label or ("<modified>" if self.modified else "<error>"),
+				 self.filename or ("<modified>" if self.modified else "<error>"),
 				 "{:} b image {}".format(self.size, self.shape),
 				 "{} faces detected".format(len(self)),
 				 ("Loaded" if len(self.im) else "Not loaded") ]
