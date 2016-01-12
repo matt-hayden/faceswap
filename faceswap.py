@@ -99,26 +99,36 @@ def transform_from_points(points1, points2):
 	# (with row vectors) where as our solution requires the matrix to be on the
 	# left (with column vectors).
 	R = (U * Vt).T
+	angle = np.arccos(R[0,0]) # radians
 	translation = c2.T - scale*R * c1.T
 	
-	return scale, R, translation
+	return scale, angle, translation.T
 
 
-def transform_matrix_from_points(*args):
-	scale, R, translation = transform_from_points(*args)
+def make_transform_matrix(scale, angle, translation):
 	# output is a transformation matrix:
 	### original syntax:
 	#M0 = np.vstack([ np.hstack(( (s2 / s1) * R,
 	#							 c2.T - (s2 / s1) * R * c1.T )),
 	#			     np.matrix([0., 0., 1.]) ])
-	M = np.ndarray((3,3), dtype=np.float64)
-	M[2, :] = [0., 0., 1.]
+	#M = np.ndarray((3,3), dtype=np.float64)
+	#M[2, :] = [0., 0., 1.]
+	M = np.identity(3, dtype=np.float64)
 
+	c = np.cos(angle)
+	s = np.sin(angle)
+	R = np.matrix( [(c, s), (-s, c)], dtype=np.float64)
+	# each of [ np.arccos(R[0,0]), -np.arcsin(R[1,0]), np.arcsin(R[0,1]), np.arccos(R[1,1]) ] is the same angle
 	M[0:2, 0:2] = scale*R
-	M[0:2, 2] = translation.T
+	M[0:2, 2] = translation
 
 	#assert np.allclose(M0, M)
 	return M
+
+
+def transform_matrix_from_points(*args):
+	scale, angle, translation = transform_from_points(*args)
+	return make_transform_matrix(scale, angle, translation)
 
 
 def warp_im(im, M, dshape):
