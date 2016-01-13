@@ -9,6 +9,7 @@ from faceswap import *
 
 
 def get_landmarks(im):
+	assert len(im)
 	rects = detector(im, 1)
 	for f in rects:
 		yield np.matrix( [[ p.x, p.y ] for p in predictor(im, f).parts()] )
@@ -65,12 +66,12 @@ class HeadImage:
 				self.detect_faces()
 			print "Loaded", len(self.landmarks), "face(s) from", arg
 		elif isinstance(arg, np.ndarray):
-			self.im = arg
+			self.im = arg.copy()
 			self.modified = True
 			self.shape = arg.shape
 			self.size = arg.nbytes
 		else:
-			raise NotImplemented()
+			raise NotImplementedError( "HeadImage({})".format(type(arg)) )
 	def loadz(self, arg):
 		d = np.load(arg)
 		self.has_cache = True
@@ -113,10 +114,25 @@ class HeadImage:
 		self.read()
 		new_image = cv2.resize(self.im, **params)
 		new_hi = HeadImage(new_image)
+		new_hi.filename, new_hi.label = self.filename, self.label+'-rescaled'
 		new_hi.landmarks = [ (scale*L).astype(np.uint) for L in self.landmarks ]
+		#for L in new_hi.landmarks:
+		#	for p in L:
+		#		assert (p <= self.shape[:2]).all()
+		return new_hi
+	def get_horizontally_flipped(self, **kwargs):
+		self.read()
+		new_image = np.fliplr(self.im)
+		new_hi = HeadImage(new_image)
+		new_hi.filename, new_hi.label = self.filename, self.label+'-flipped'
+		new_hi.detect_faces()
+		"""
+		w = new_hi.shape[1] # x-dimension
+		new_hi.landmarks = [ L.copy() for L in self.landmarks ]
 		for L in new_hi.landmarks:
-			for p in L:
-				assert (p <= self.shape[:2]).all()
+			L[:, 0] = w - L[:, 0] # flip x-dimension
+		# type conversion was needed here on above function: .astype(np.uint)
+		"""
 		return new_hi
 	def get_mask(self, arg=0, **kwargs):
 		# .im could be None
@@ -129,11 +145,12 @@ class HeadImage:
 	def describe(self):
 		"""Form a list of characteristics
 		"""
-		return [ self.label or ("<modified>" if self.modified else "<error>"),
-				 self.filename or ("<modified>" if self.modified else "<error>"),
+		return [ self.label[12:] or ("<modified>" if self.modified else "<error>"),
+				 self.filename[:12] or ("<modified>" if self.modified else "<error>"),
 				 "{:} b image {}".format(self.size, self.shape),
 				 "{} faces detected".format(len(self)),
-				 ("Loaded" if len(self.im) else "Not loaded") ]
+				 ("Loaded" if len(self.im) else "Not loaded"),
+				 ("Modified" if self.modified else "Not modified") ]
 	def __repr__(self):
 		return 'HeadImage<'+','.join(self.describe())+'>'
 	def get_pdistances(self):
@@ -158,3 +175,4 @@ class HeadImage:
 												 im2_blur.astype(dtype))
 
 
+# vim: tabstop=4 shiftwidth=4 softtabstop=4

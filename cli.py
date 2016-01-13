@@ -19,56 +19,99 @@ class FaceSwapError(FaceDetectError):
 	pass
 
 
-def swap_many(head_filenames, face_filenames, working_directory='', output_directory='', allow_rescale=None):
-	"""
-	Returns a list of image files that can layer for further processing
+def swap_many(head_filenames, face_filenames, **kwargs):
+	"""Expanded face swap routine:
+		Multiple filenames for head image
+		Multiple filenames for face image
+		Transparent layering
+
+		options:
+			allow_rescale		head images are rescaled to the largest face image
+			mirror_also			head images are duplicated and flipped (at least 2x slowdown)
+			output_directory
+			working_directory
 	"""
 	def verify_dir(dirname):
 		if not os.path.exists(dirname):
 			os.makedirs(dirname)
 		if not os.path.isdir(dirname):
 			raise FaceSwapError("'{}' not valid".format(dirname))
+	allow_rescale = kwargs.pop('allow_rescale', None)
+	mirror_also = kwargs.pop('mirror_also', True)
+	working_directory = kwargs.pop('working_directory', '')
 	if working_directory:
 		verify_dir(working_directory)
-		print "temp is:", working_directory
+	output_directory = kwargs.pop('output_directory', '')
 	if output_directory:
 		verify_dir(output_directory)
-		print "output in:", output_directory
-	head_files = []
-	for f in tqdm.tqdm(head_filenames, desc="Scanning heads"):
-		i = HeadImage(f)
-		if not len(i.landmarks)==1:
-			print "Skipping", i.filename
-			continue
-		if not i.has_cache:
-			i.savez()
-		del i.im # saves memory
-		i.im = []
-		head_files.append(i)
-	face_files = []
-	for f in tqdm.tqdm(face_filenames, desc="Scanning faces"):
-		i = HeadImage(f)
-		if not len(i.landmarks)==1:
-			print "Skipping", i.filename
-			continue
-		if not i.has_cache:
-			i.savez()
-		del i.im # saves memory
-		i.im = []
-		face_files.append(i)
-	if allow_rescale is None:
-		allow_rescale = (len(head_files) == 1) and (len(face_files) == 1)
+	#
+	head_files, face_files = [], []
+	params = [ ('heads', head_filenames, head_files), ('faces', face_filenames, face_files) ]
+	total_steps = len(head_filenames)*len(face_filenames)
+	bar = tqdm.tqdm(desc="Scanning...", total=total_steps)
+	for label, files, dest in params:
+		for f in files:
+			i = HeadImage(f)
+			if not len(i.landmarks)==1:
+				print "Skipping", i.filename
+				continue
+			if not i.has_cache:
+				i.savez()
+			#del i.im # saves memory?
+			i.im = []
+			dest.append(i)
+			bar.update(1)
 	assert head_files and face_files
-	for hf in tqdm.tqdm(head_files):
+	#
+	total_steps = len(head_files)*len(face_files)
+	if mirror_also:
+		total_steps *= 2
+		def head_file_iterator(his):
+			for hi in his:
+				yield hi
+				yield hi.get_horizontally_flipped()
+	else:
+		def head_file_iterator(his):
+			return his
+	
+	bar = tqdm.tqdm(desc="Swapping...", total=total_steps)
+	for orig_hf in head_file_iterator(head_files):
+		hf = orig_hf
 		output_filename = hf.label+'.tiff'
 		if output_directory:
 			output_filename = os.path.join(output_directory, output_filename)
-		layer_filenames = [ hf.filename ] # this will build a stack of output files
 
+		"""First, we dry-run through the face files
+		"""
+		h_landmarks = hf.landmarks[0]
+		h_align = h_landmarks[ALIGN_POINTS]
+		if allow_rescale:
+			largest_face_filename = ''
+			for ff in face_files:
+				#
+				f_landmarks = ff.landmarks[0]
+				f_align = f_landmarks[ALIGN_POINTS]
+				#
+				scale, angle, translation = transform_from_points(h_align, f_align)
+				if (1 < scale):
+					print "Rescaling..."
+					hf = orig_hf.get_rescaled(scale)
+					h_landmarks = hf.landmarks[0]
+					h_align = scale*h_align
+					largest_face_filename = ff.filename
+			if largest_face_filename:
+				dirname, basename = os.path.split(largest_face_filename)
+				label, _ = os.path.splitext(basename)
+				hf.label = orig_hf.label + '_for_' + label
+		head_results_file = hf.label
+		if working_directory:
+			head_results_file = os.path.join(working_directory, head_results_file)
+		# we build a stack of output files
+		if hf.modified:
+			hf.filename = head_results_file+'-background.png'
+			cv2.imwrite(hf.filename, hf.im)
+		layer_filenames = [ hf.filename ]
 		for ff in face_files:
-			h_landmarks = hf.landmarks[0]
-			h_align = h_landmarks[ALIGN_POINTS]
-			#
 			f_landmarks = ff.landmarks[0]
 			f_align = f_landmarks[ALIGN_POINTS]
 			#
@@ -77,33 +120,15 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 				results_file = os.path.join(working_directory, results_file)
 
 			scale, angle, translation = transform_from_points(h_align, f_align)
-			print "scale:", scale
-			print "angle:", angle, 'radians', np.rad2deg(angle), 'degrees'
-			print "offset:", translation
-			#M = mutil.make_transform_matrix(scale, angle, translation) # replaced with...
-			print "original head image is", hf
-			if allow_rescale and (1 < scale):
-				print "Rescaling..."
-				my_hf = hf.get_rescaled(scale)
-				h_landmarks = my_hf.landmarks[0]
-				h_align = scale*h_align
-				# h_align = h_landmarks[ALIGN_POINTS] # same as above?
-				print "rescaled head image is", my_hf
-				cv2.imwrite(results_file+'-background.png', my_hf.im)
-				layer_filenames = [ results_file+'-background.png' ]
-				scale, angle, translation = transform_from_points(h_align, f_align)
-				print "scale:", scale
-				print "angle:", angle, 'radians', np.rad2deg(angle), 'degrees'
-				print "offset:", translation
-			else:
-				my_hf = hf
-			# end of hack
+
+			print hf.filename, ff.filename, scale, angle, translation
+
 			M = mutil.make_transform_matrix(scale, angle, translation)
-			warped_mask = warp_im(ff.get_mask(), M, my_hf.shape)
-			combined_mask = np.max([my_hf.get_mask(), warped_mask], axis=0)
+			warped_mask = warp_im(ff.get_mask(), M, hf.shape)
+			combined_mask = np.max([hf.get_mask(), warped_mask], axis=0)
 			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha
 			ff.read()
-			warped_im2 = warp_im(ff.im, M, my_hf.shape).astype(np.float64)
+			warped_im2 = warp_im(ff.im, M, hf.shape).astype(np.float64)
 			"""
 			layer_filenames += [ results_file+'-orig.png' ]
 			cv2.imwrite(layer_filenames[-1], cv2.merge((im1[:,:,0],
@@ -123,33 +148,27 @@ def swap_many(head_filenames, face_filenames, working_directory='', output_direc
 									hf.im[:,:,2],
 									256.0-head_alpha)) )
 			"""
-			my_hf.read()
-			#if not len(my_hf.im):
-			#	print "loading", my_hf.filename
-			#	my_hf.read()
-			#warped_corrected_im2 = correct_colours(hf.im, warped_im2, h_landmarks)
-			warped_corrected_im2 = my_hf.correct_colours(warped_im2)
+			hf.read()
+			warped_corrected_im2 = hf.correct_colours(warped_im2)
 			layer_filenames += [ results_file+'-alpha-color-corrected.png' ]
 			cv2.imwrite(layer_filenames[-1], cv2.merge((warped_corrected_im2[:,:,0],
 									warped_corrected_im2[:,:,1],
 									warped_corrected_im2[:,:,2],
 									face_alpha)) )
-			blend_im = my_hf.im * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
+			blend_im = hf.im * (1.0 - combined_mask) + warped_corrected_im2 * combined_mask
 			layer_filenames += [ results_file+'-blended.png' ]
 			cv2.imwrite(layer_filenames[-1], blend_im)
-			del my_hf
+			bar.update(1)
 		if make_layers(layer_filenames, output_filename)==0: # command successfully exits with 0
-			#if not working_directory: # TODO: dangerous
-			#	trash(layer_filenames[1:])
-			yield hf.filename, True
-			del hf
+			yield orig_hf.filename, layer_filenames, True
 		else:
-			yield hf.filename, False
-			#del hf
+			yield hf.filename, layer_filenames, False
+	if __debug__:
+		print "Intermediate files are in '{}'".format(working_directory or '.')
 
 
 def scanz(args, extensions=['.jpg', '.png', '.jpeg', '.jp2']):
-	for arg in tqdm.tqdm(args, desc="Caching results"):
+	for arg in tqdm.tqdm(args, desc="Caching..."):
 		if os.path.isfile(arg+'.npz'):
 			continue
 		imh = HeadImage(arg)
@@ -171,12 +190,14 @@ def main(**kwargs):
 		print "Head files:", ','.join(head_files)
 		face_files = expand_directories_in_args([kwargs.pop('<FACE_DIR>')])
 		print "Face files:", ','.join(face_files)
-		for hf, result in tqdm.tqdm(swap_many(head_filenames=head_files,
-											  face_filenames=face_files,
-											  output_directory=output_directory or '',
-											  working_directory=working_directory or tempfile.mkdtemp()),
-									total=len(head_files)):
+		for hf, _, result in swap_many(head_filenames=head_files,
+										face_filenames=face_files,
+										output_directory=output_directory or '',
+										working_directory=working_directory or tempfile.mkdtemp() ):
 			if not result:
 				#print head_file, "failed"
 				rcode = False
 		return rcode
+
+
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
