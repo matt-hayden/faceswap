@@ -104,7 +104,8 @@ class HeadImage:
 		#self.landmarks = np.array(get_landmarks(self.im))
 		for L in self.landmarks:
 			for p in L:
-				assert (p <= self.shape[:2]).all()
+				if not (p <= self.shape[:2]).all():
+					print "warning: detect_faces() crossed image boundary"
 		return len(self.landmarks)
 	def get_rescaled(self, scale, **kwargs):
 		assert isinstance(scale, float)

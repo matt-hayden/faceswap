@@ -63,7 +63,7 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 			bar.update(1)
 	assert head_files and face_files
 	#
-	total_steps = len(head_files)*len(face_files)
+	total_steps = len(head_files)*(len(face_files)+2)
 	if mirror_also:
 		total_steps *= 2
 		def head_file_iterator(his):
@@ -161,6 +161,7 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 			bar.update(1)
 		if make_layers(layer_filenames, output_filename)==0: # command successfully exits with 0
 			yield orig_hf.filename, layer_filenames, True
+			bar.update(2)
 		else:
 			yield hf.filename, layer_filenames, False
 	if __debug__:
