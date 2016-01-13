@@ -14,9 +14,9 @@ if not os.path.isfile(PREDICTOR_PATH):
 
 
 # Points used to line up the images.
-#ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_EYE_POINTS + LEFT_EYE_POINTS +
-#							   RIGHT_BROW_POINTS + NOSE_POINTS + MOUTH_POINTS)
-ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_BROW_POINTS + MOUTH_POINTS)
+ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_EYE_POINTS + LEFT_EYE_POINTS +
+				RIGHT_BROW_POINTS + NOSE_POINTS + MOUTH_POINTS)
+#ALIGN_POINTS = (LEFT_BROW_POINTS + RIGHT_BROW_POINTS + MOUTH_POINTS)
 
 # Points from the second image to overlay on the first. The convex hull of each
 # element will be overlaid.
