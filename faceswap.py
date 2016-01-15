@@ -6,7 +6,6 @@ import dlib
 import numpy as np
 
 from . import *		# some constants are moved into __init__.py
-import mutil		# some matrix methods are reimplemented in mutil.py
 
 
 if not os.path.isfile(PREDICTOR_PATH):
@@ -78,7 +77,10 @@ def transform_from_points(points1, points2, dtype=np.float64):
 	points1 /= s1
 	points2 /= s2
 
-	U, S, Vt = np.linalg.svd(points1.T * points2)
+	U, s, Vt = np.linalg.svd(points1.T * points2)
+	#if __debug__:
+	#	print 'pseudoinverse', np.diagflat(1./s)
+	#	print 'eigenvalues', np.square(s)
 
 	# The R we seek is in fact the transpose of the one given by U * Vt. This
 	# is because the above formulation assumes the matrix goes on the right
@@ -89,20 +91,23 @@ def transform_from_points(points1, points2, dtype=np.float64):
 	# each of [ np.arccos(R[0,0]), -np.arcsin(R[1,0]), np.arcsin(R[0,1]), np.arccos(R[1,1]) ] is the same angle
 	translation = c2.T - scale*R * c1.T
 	
-	return scale, angle, translation.T
+	return scale, np.rad2deg(angle), translation.T
 
 
 def transform_matrix_from_points(*args):
 	"""A stub function that preserves the functionality of Matt's transformation_from_points()
 	"""
 	scale, angle, translation = transform_from_points(*args)
-	return mutil.make_transform_matrix(scale, angle, translation)
+	center = (0,0) # gets thrown out, anyway
+	rot_mat = cv2.getRotationMatrix2D( center, angle, scale );
+	rot_mat[0:2, 2] = translation
+	return rot_mat
 
 
 def warp_im(im, M, dshape):
 	output_im = np.zeros(dshape, dtype=im.dtype)
 	cv2.warpAffine(im,
-				   M[:2],
+				   M, # M[:2] if square
 				   (dshape[1], dshape[0]),
 				   dst=output_im,
 				   borderMode=cv2.BORDER_TRANSPARENT,

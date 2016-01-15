@@ -9,7 +9,6 @@ import tqdm
 
 from . import *
 from faceswap import *
-import mutil
 from util import *
 
 from headimage import HeadImage
@@ -94,7 +93,7 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 				#
 				scale, angle, translation = transform_from_points(h_align, f_align)
 				if (1 < scale):
-					print "Rescaling..."
+					if __debug__: print "Rescaling..."
 					hf = orig_hf.get_rescaled(scale)
 					h_landmarks = hf.landmarks[0]
 					h_align = scale*h_align
@@ -111,6 +110,7 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 			hf.filename = head_results_file+'-background.png'
 			cv2.imwrite(hf.filename, hf.im)
 		layer_filenames = [ hf.filename ]
+		if __debug__: print 'head|face|scale|angle|translation|output'
 		for ff in face_files:
 			f_landmarks = ff.landmarks[0]
 			f_align = f_landmarks[ALIGN_POINTS]
@@ -121,14 +121,22 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 
 			scale, angle, translation = transform_from_points(h_align, f_align)
 
-			print hf.filename, ff.filename, scale, angle, translation
+			if __debug__: print '|'.join(str(_) for _ in ( hf.filename,
+														   ff.filename,
+														   scale,
+														   angle,
+														   translation,
+														   results_file ))
 
-			M = mutil.make_transform_matrix(scale, angle, translation)
-			warped_mask = warp_im(ff.get_mask(), M, hf.shape)
+			center = (0,0) # gets thrown out, anyway
+			rot_mat = cv2.getRotationMatrix2D( center, angle, scale );
+			rot_mat[0:2, 2] = translation
+			# maybe try to guess the fit here by testing M*f_align - h_align
+			warped_mask = warp_im(ff.get_mask(), rot_mat, hf.shape)
 			combined_mask = np.max([hf.get_mask(), warped_mask], axis=0)
 			face_alpha = combined_mask[:,:,0]*256 # 0=pick a channel to be substituted for alpha
 			ff.read()
-			warped_im2 = warp_im(ff.im, M, hf.shape).astype(np.float64)
+			warped_im2 = warp_im(ff.im, rot_mat, hf.shape).astype(np.float64)
 			"""
 			layer_filenames += [ results_file+'-orig.png' ]
 			cv2.imwrite(layer_filenames[-1], cv2.merge((im1[:,:,0],
@@ -164,8 +172,7 @@ def swap_many(head_filenames, face_filenames, **kwargs):
 			bar.update(2)
 		else:
 			yield hf.filename, layer_filenames, False
-	if __debug__:
-		print "Intermediate files are in '{}'".format(working_directory or '.')
+	if __debug__: print "Intermediate files are in '{}'".format(working_directory or '.')
 
 
 def scanz(args, extensions=['.jpg', '.png', '.jpeg', '.jp2']):
@@ -188,15 +195,15 @@ def main(**kwargs):
 	elif kwargs.pop('swap'):
 		rcode = True
 		head_files = expand_directories_in_args([kwargs.pop('<HEAD_DIR>')])
-		print "Head files:", ','.join(head_files)
+		if __debug__: print "Head files:", ','.join(head_files)
 		face_files = expand_directories_in_args([kwargs.pop('<FACE_DIR>')])
-		print "Face files:", ','.join(face_files)
+		if __debug__: print "Face files:", ','.join(face_files)
 		for hf, _, result in swap_many(head_filenames=head_files,
 										face_filenames=face_files,
 										output_directory=output_directory or '',
 										working_directory=working_directory or tempfile.mkdtemp() ):
 			if not result:
-				#print head_file, "failed"
+				print head_file, "failed"
 				rcode = False
 		return rcode
 

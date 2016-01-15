@@ -64,7 +64,7 @@ class HeadImage:
 			else:
 				self.read()
 				self.detect_faces()
-			print "Loaded", len(self.landmarks), "face(s) from", arg
+			if __debug__: print "Loaded", len(self.landmarks), "face(s) from", arg
 		elif isinstance(arg, np.ndarray):
 			self.im = arg.copy()
 			self.modified = True
@@ -102,10 +102,14 @@ class HeadImage:
 		self.read()
 		self.landmarks = list(get_landmarks(self.im))
 		#self.landmarks = np.array(get_landmarks(self.im))
+		warnings = 0
 		for L in self.landmarks:
 			for p in L:
 				if not (p <= self.shape[:2]).all():
-					print "warning: detect_faces() crossed image boundary"
+					warnings += 1
+		if warnings:
+			if __debug__: print "warning: detect_faces() crossed image boundary {} times".format(warnings)
+			
 		return len(self.landmarks)
 	def get_rescaled(self, scale, **kwargs):
 		assert isinstance(scale, float)
