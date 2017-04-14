@@ -1,0 +1,7 @@
+exclude .gitignore
+recursive-exclude *.bz2
+
+include LICENSE
+include README.rst
+include faceswap/data/*.dat
+include data/*.dat

@@ -1,7 +1,6 @@
-#!/usr/bin/env python2
 import os, os.path
 
-__version__ = '0.1.4'
+__version__ = '1.0.2-dev1'
 
 class FaceDetectError(Exception):
 	pass
@@ -18,7 +17,7 @@ LEFT_EYE_POINTS		= list(range(42, 48))
 MOUTH_POINTS		= list(range(48, 61))
 # what about?		= list(range(62, 68))
 
-PREDICTOR_PATH = "shape_predictor_68_face_landmarks.dat"
+PREDICTOR_PATH = "data/shape_predictor_68_face_landmarks.dat"
 if not os.path.isfile(PREDICTOR_PATH):
         dirname, basename = os.path.split(__file__)
         PREDICTOR_PATH = os.path.join(dirname, PREDICTOR_PATH)

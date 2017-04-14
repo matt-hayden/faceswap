@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 """Swap faces in image files
   Usage:
     face scan [options] [--] <FILES>...
