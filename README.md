@@ -1,7 +1,9 @@
-#faceswap
+# faceswap #
 This is the code behind the [Switching Eds blog 
 post](http://matthewearl.github.io/2015/07/28/switching-eds-with-python/) 
 packaged as a command-line utility.
+
+## Installation ##
 
 This is in apprehensive development, and setup goes as follows:
 
@@ -20,7 +22,7 @@ and begin with `virtualenv --python=python2.7 ~/faceswap-dev`
 1. Install from your clone directory `pip install -e ~/faceswap`.
 1. The command-line utility faceswap will appear in your path.
 
-Simplest usage:
+### Simplest usage: ###
 
 ```
 faceswap <head image> <face image>
