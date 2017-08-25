@@ -1,0 +1,8 @@
+name			faceswap
+version			1.0.2-dev1
+url			https://github.com/matt-hayden/faceswap
+maintainer		Matt Hayden
+maintainer_email	hayden+github@morp.holo.gy
+license			The Unlicense
+
+Packaging of github.com/matthewearl/faceswap with command-line interface
